@@ -1,0 +1,84 @@
+package cloud.videos.controllers
+
+import cloud.videos.dtos.ErrorResponse
+import cloud.videos.dtos.UploadResponse
+import cloud.videos.exceptions.EmptyFileException
+import cloud.videos.exceptions.FileSizeExceededException
+import cloud.videos.services.CacheService
+import cloud.videos.services.DatabaseService
+import cloud.videos.services.VideoService
+import com.mongodb.client.gridfs.GridFSBucket
+import io.micronaut.http.HttpResponse
+import io.micronaut.http.MediaType
+import io.micronaut.http.annotation.Controller
+import io.micronaut.http.annotation.Post
+import io.micronaut.http.multipart.CompletedFileUpload
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.slf4j.LoggerFactory
+
+@Controller("/videos")
+class VideoController(gridFSBucket: GridFSBucket, private val cacheService: CacheService, private val videoService: VideoService) {
+
+    private val logger = LoggerFactory.getLogger(VideoController::class.java)
+    private val databaseService = DatabaseService(gridFSBucket)
+
+    @Post("/upload", consumes = [MediaType.MULTIPART_FORM_DATA])
+    suspend fun uploadVideo(file: CompletedFileUpload): HttpResponse<Any> {
+        try {
+            val maxFileSize: Long = 500 * 1024 * 1024 // 500 MB upload file limit
+
+            if (file.size <= 0) {
+                throw EmptyFileException("File is empty")
+            }
+
+            if (file.size > maxFileSize) {
+                throw FileSizeExceededException("Maximum file size exceeded")
+            }
+
+            logger.info("Accepted file {} (size: {} bytes)", file.filename, file.size)
+
+            // measure ffmpeg post-processing time
+            val processingStartTime = System.currentTimeMillis()
+            logger.info("Starting video processing...")
+
+            // transcode the video
+            val transcodedVideo = withContext(Dispatchers.IO) {
+                file.inputStream.use { stream ->
+                    videoService.processVideo(stream)
+                }
+            }
+
+            val processingDuration = System.currentTimeMillis() - processingStartTime
+            logger.info("Video processing finished in {} ms", processingDuration)
+
+            // upload video to database
+            val videoId = withContext(Dispatchers.IO) {
+                databaseService.saveVideo(transcodedVideo)
+            }
+
+            logger.info("Caching video...")
+
+            // upload video to cache
+            withContext(Dispatchers.IO) {
+                cacheService.saveVideo(videoId, transcodedVideo)
+            }
+
+            logger.info("Video {} cached", videoId)
+
+            return HttpResponse.created(
+                UploadResponse(
+                    id = videoId,
+                    filename = file.filename,
+                    size = file.size.toString(),
+                )
+            )
+        } catch (exception: IllegalStateException) {
+            return HttpResponse.serverError(ErrorResponse(exception.message.toString()))
+        } catch (exception: EmptyFileException) {
+            return HttpResponse.badRequest(ErrorResponse(exception.message.toString()))
+        } catch (exception: FileSizeExceededException) {
+            return HttpResponse.badRequest(ErrorResponse(exception.message.toString()))
+        }
+    }
+}

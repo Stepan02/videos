@@ -1,0 +1,6 @@
+applicationType: default
+defaultPackage: cloud.videos
+testFramework: junit
+sourceLanguage: kotlin
+buildTool: gradle_kotlin
+features: [ app-name, gradle, http-client-test, junit, kotlin, kotlin-application, kotlin-extension-functions, ksp, logback, micronaut-aot, micronaut-build, micronaut-configuration-validation-gradle-plugin, micronaut-http-validation, mongo-reactive, netty-server, properties, readme, redis-lettuce, serialization-jackson, shade, static-resources, test-resources, websocket ]
