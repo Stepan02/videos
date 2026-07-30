@@ -107,4 +107,29 @@ class VideoController(gridFSBucket: GridFSBucket, private val cacheService: Cach
             return HttpResponse.serverError(ErrorResponse("Failed to get video thumbnail"))
         }
     }
+
+    @Get("/{id}/manifest.m3u8")
+    suspend fun getVideoManifest(id: String): HttpResponse<out Any> {
+        try {
+            // cache
+            val manifestContentCached = cacheService.getVideoManifest(id)
+
+            // cache hit
+            if (manifestContentCached !== null) {
+                return HttpResponse.ok(manifestContentCached)
+                    .contentType(MediaType.of("application/x-mpegurl"))
+            }
+
+            // cache miss
+            val manifestContent = databaseService.getVideoManifest(id)
+                ?: return HttpResponse.notFound(ErrorResponse("Manifest not found"))
+
+            return HttpResponse.ok(manifestContent)
+                .contentType(MediaType.of("application/x-mpegurl"))
+        } catch (exception: Exception) {
+            logger.error(exception.message, exception)
+
+            return HttpResponse.serverError(ErrorResponse("Failed to get video manifest"))
+        }
+    }
 }
