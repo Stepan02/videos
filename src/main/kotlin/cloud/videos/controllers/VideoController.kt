@@ -132,4 +132,29 @@ class VideoController(gridFSBucket: GridFSBucket, private val cacheService: Cach
             return HttpResponse.serverError(ErrorResponse("Failed to get video manifest"))
         }
     }
+
+    @Get("/{id}/{chunkName}")
+    suspend fun getVideoChunk(id: String, chunkName: String): HttpResponse<out Any> {
+        try {
+            // cache
+            val chunkBytesCached = cacheService.getVideoChunk(id, chunkName)
+
+            // cache hit
+            if (chunkBytesCached !== null) {
+                return HttpResponse.ok(chunkBytesCached)
+                    .contentType(MediaType.of("video/mp2t"))
+            }
+
+            // cache miss
+            val chunkContent = databaseService.getVideoChunk(id, chunkName)
+                ?: return HttpResponse.notFound(ErrorResponse("Video chunk not found"))
+
+            return HttpResponse.ok(chunkContent)
+                .contentType(MediaType.of("video/mp2t"))
+        } catch (exception: Exception) {
+            logger.error(exception.message, exception)
+
+            return HttpResponse.serverError(ErrorResponse("Failed to get video chunk"))
+        }
+    }
 }
