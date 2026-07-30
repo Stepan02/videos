@@ -1,9 +1,6 @@
 package cloud.videos.services
 
 import cloud.videos.exceptions.FileExistsException
-import cloud.videos.exceptions.MissingChunkException
-import cloud.videos.exceptions.MissingManifestException
-import cloud.videos.exceptions.MissingThumbnailException
 import io.lettuce.core.api.StatefulRedisConnection
 import jakarta.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +24,7 @@ class CacheService(private val connection: StatefulRedisConnection<String, ByteA
         commands.setex("video:$id:manifest", ttlSeconds, data.playlist)
 
         // save thumbnail image
-        commands.setex("video:$id:thumbnail", ttlSeconds,  data.thumbnail)
+        commands.setex("video:$id:thumbnail", ttlSeconds, data.thumbnail)
 
         // save video chunks
         data.chunks.forEach { (chunkName, bytes) ->
@@ -37,29 +34,29 @@ class CacheService(private val connection: StatefulRedisConnection<String, ByteA
         commands.exec()
     }
 
-    suspend fun getVideoManifest(id: String): ByteArray {
+    suspend fun getVideoManifest(id: String): ByteArray? {
         val commands = connection.async()
 
         val manifest = commands.get("video:$id:manifest").await()
-            ?: throw MissingManifestException("Video manifest not found")
+            ?: return null
 
         return manifest
     }
 
-    suspend fun getVideoThumbnail(id: String): ByteArray {
+    suspend fun getVideoThumbnail(id: String): ByteArray? {
         val commands = connection.async()
 
         val thumbnail = commands.get("video:$id:thumbnail").await()
-            ?: throw MissingThumbnailException("Video thumbnail not found")
+            ?: return null
 
         return thumbnail
     }
 
-    suspend fun getVideoChunk(id: String, name: String): ByteArray {
+    suspend fun getVideoChunk(id: String, name: String): ByteArray? {
         val commands = connection.async()
 
         val chunk = commands.get("video:$id:chunk:$name").await()
-            ?: throw MissingChunkException("Video $id chunk not found")
+            ?: return null
 
         return chunk
     }

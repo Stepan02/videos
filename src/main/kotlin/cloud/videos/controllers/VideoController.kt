@@ -11,6 +11,7 @@ import com.mongodb.client.gridfs.GridFSBucket
 import io.micronaut.http.HttpResponse
 import io.micronaut.http.MediaType
 import io.micronaut.http.annotation.Controller
+import io.micronaut.http.annotation.Get
 import io.micronaut.http.annotation.Post
 import io.micronaut.http.multipart.CompletedFileUpload
 import kotlinx.coroutines.Dispatchers
@@ -79,6 +80,31 @@ class VideoController(gridFSBucket: GridFSBucket, private val cacheService: Cach
             return HttpResponse.badRequest(ErrorResponse(exception.message.toString()))
         } catch (exception: FileSizeExceededException) {
             return HttpResponse.badRequest(ErrorResponse(exception.message.toString()))
+        }
+    }
+
+    @Get("/{id}/thumbnail")
+    suspend fun getVideoThumbnail(id: String): HttpResponse<out Any> {
+        try {
+            // cache
+            val thumbnailBytesCached = cacheService.getVideoThumbnail(id)
+
+            // cache hit
+            if (thumbnailBytesCached !== null) {
+                return HttpResponse.ok(thumbnailBytesCached)
+                    .contentType(MediaType.IMAGE_JPEG)
+            }
+
+            // cache miss
+            val thumbnailBytes = databaseService.getVideoThumbnail(id)
+                ?: return HttpResponse.notFound(ErrorResponse("Thumbnail not found"))
+
+            return HttpResponse.ok(thumbnailBytes)
+                .contentType(MediaType.IMAGE_JPEG)
+        } catch (exception: Exception) {
+            logger.error(exception.message, exception)
+
+            return HttpResponse.serverError(ErrorResponse("Failed to get video thumbnail"))
         }
     }
 }
