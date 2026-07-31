@@ -53,4 +53,27 @@ class DatabaseService(private val gridFSBucket: GridFSBucket) {
 
         return@withContext gridFSBucket.openDownloadStream(videoChunk.objectId).readBytes()
     }
+
+    suspend fun deleteVideo(id: String): Boolean = withContext(Dispatchers.IO) {
+        // return false if the object id is invalid
+        if (!ObjectId.isValid(id)) return@withContext false
+
+        val objectId = ObjectId(id)
+
+        // check whether video manifest exists - return success if it does not exist
+        gridFSBucket.find(Filters.eq("_id", objectId)).first() ?: return@withContext true
+
+        // delete thumbnail and video chunks
+        val videoFiles = gridFSBucket.find(Filters.regex("filename", "^data/$id/")).toList()
+
+        videoFiles.forEach { file ->
+            gridFSBucket.delete(file.objectId)
+        }
+
+        // delete manifest
+        gridFSBucket.delete(ObjectId(id))
+
+        // return true indicating the deletion succeeded
+        return@withContext true
+    }
 }

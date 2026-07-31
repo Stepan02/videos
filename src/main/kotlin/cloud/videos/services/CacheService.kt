@@ -5,6 +5,8 @@ import io.lettuce.core.api.StatefulRedisConnection
 import jakarta.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.future.await
+import kotlinx.coroutines.reactive.awaitFirstOrNull
+import kotlinx.coroutines.reactive.awaitSingle
 import kotlinx.coroutines.withContext
 
 @Singleton
@@ -59,5 +61,37 @@ class CacheService(private val connection: StatefulRedisConnection<String, ByteA
             ?: return null
 
         return chunk
+    }
+
+    suspend fun deleteVideo(id: String) {
+        val commands = connection.reactive()
+
+        // the video manifest contains list of video chunks - use that to get keys to delete list
+        val manifestBytes = commands.get("video:$id:manifest").awaitFirstOrNull()
+            ?: return
+
+        // get manifest bytes
+        val manifest = manifestBytes.decodeToString()
+
+        // parse chunk list from the manifest
+        // every line of the manifest which doesn't start with "#" contains a chunk name
+        // (reference: https://datatracker.ietf.org/doc/html/rfc8216#section-4.1)
+        val chunks = manifest.lineSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+            .toList()
+
+        // add every key associated with the video (manifest, thumbnail and chunks) to one list
+        val keysToDelete = ArrayList<String>(chunks.size + 2).apply {
+            add("video:$id:manifest")
+            add("video:$id:thumbnail")
+
+            chunks.forEach {
+                add("video:$id:chunk:$it")
+            }
+        }
+
+        // bulk delete the whole key list
+        commands.del(*keysToDelete.toTypedArray()).awaitSingle()
     }
 }

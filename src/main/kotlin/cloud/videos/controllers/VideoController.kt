@@ -11,9 +11,11 @@ import com.mongodb.client.gridfs.GridFSBucket
 import io.micronaut.http.HttpResponse
 import io.micronaut.http.MediaType
 import io.micronaut.http.annotation.Controller
+import io.micronaut.http.annotation.Delete
 import io.micronaut.http.annotation.Get
 import io.micronaut.http.annotation.Post
 import io.micronaut.http.multipart.CompletedFileUpload
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
@@ -74,6 +76,8 @@ class VideoController(gridFSBucket: GridFSBucket, private val cacheService: Cach
                     size = file.size.toString(),
                 )
             )
+        } catch (exception: CancellationException) {
+            throw exception
         } catch (exception: IllegalStateException) {
             return HttpResponse.serverError(ErrorResponse(exception.message.toString()))
         } catch (exception: EmptyFileException) {
@@ -101,6 +105,8 @@ class VideoController(gridFSBucket: GridFSBucket, private val cacheService: Cach
 
             return HttpResponse.ok(thumbnailBytes)
                 .contentType(MediaType.IMAGE_JPEG)
+        } catch (exception: CancellationException) {
+            throw exception
         } catch (exception: Exception) {
             logger.error(exception.message, exception)
 
@@ -126,6 +132,8 @@ class VideoController(gridFSBucket: GridFSBucket, private val cacheService: Cach
 
             return HttpResponse.ok(manifestContent)
                 .contentType(MediaType.of("application/x-mpegurl"))
+        } catch (exception: CancellationException) {
+            throw exception
         } catch (exception: Exception) {
             logger.error(exception.message, exception)
 
@@ -151,10 +159,40 @@ class VideoController(gridFSBucket: GridFSBucket, private val cacheService: Cach
 
             return HttpResponse.ok(chunkContent)
                 .contentType(MediaType.of("video/mp2t"))
+        } catch (exception: CancellationException) {
+            throw exception
         } catch (exception: Exception) {
             logger.error(exception.message, exception)
 
             return HttpResponse.serverError(ErrorResponse("Failed to get video chunk"))
+        }
+    }
+
+    @Delete("/{id}")
+    suspend fun deleteVideo(id: String): HttpResponse<out Any> {
+        try {
+            // delete from cache
+            cacheService.deleteVideo(id)
+
+            logger.info("Video $id deleted from cache")
+
+            // delete from database
+            val videoDeletedFromDatabase = databaseService.deleteVideo(id)
+
+            // deleteVideo returns false if the video id has invalid format
+            if (!videoDeletedFromDatabase) {
+                return HttpResponse.badRequest(ErrorResponse("Invalid video ID"))
+            }
+
+            logger.info("Video $id deleted from database")
+
+            return HttpResponse.noContent()
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            logger.error(exception.message, exception)
+
+            return HttpResponse.serverError(ErrorResponse("Failed to delete video"))
         }
     }
 }

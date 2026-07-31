@@ -74,7 +74,7 @@ class VideoService {
 
             if (transcodingExitCode != 0) {
                 val errorLog = ffmpegVideoLogs.readText()
-                logger.error("Video processing failed with code $transcodingExitCode: $errorLog")
+                logger.error("Video processing failed with code {}: {}", transcodingExitCode, errorLog)
                 throw IllegalStateException("Video processing failed")
             }
 
@@ -92,7 +92,7 @@ class VideoService {
 
             if (thumbnailExitCode != 0) {
                 val errorLog = ffmpegThumbnailLogs.readText()
-                logger.error("Thumbnail processing failed with code $thumbnailExitCode: $errorLog")
+                logger.error("Thumbnail processing failed with code {}: {}", thumbnailExitCode, errorLog)
                 throw IllegalStateException("Thumbnail processing failed")
             }
 
