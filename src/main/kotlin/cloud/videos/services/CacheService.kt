@@ -1,6 +1,7 @@
 package cloud.videos.services
 
 import cloud.videos.exceptions.FileExistsException
+import io.lettuce.core.GetExArgs
 import io.lettuce.core.api.StatefulRedisConnection
 import jakarta.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,12 @@ class CacheService(private val connection: StatefulRedisConnection<String, ByteA
         commands.exec()
     }
 
+    suspend fun saveVideoChunk(id: String, chunkName: String, bytes: ByteArray, ttlSeconds: Long = 3600) {
+        val commands = connection.async()
+
+        commands.setex("video:$id:chunk:$chunkName", ttlSeconds, bytes).await()
+    }
+
     suspend fun getVideoManifest(id: String): ByteArray? {
         val commands = connection.async()
 
@@ -54,10 +61,12 @@ class CacheService(private val connection: StatefulRedisConnection<String, ByteA
         return thumbnail
     }
 
-    suspend fun getVideoChunk(id: String, name: String): ByteArray? {
+    suspend fun getVideoChunk(id: String, name: String, ttlSeconds: Long = 3600): ByteArray? {
         val commands = connection.async()
 
-        val chunk = commands.get("video:$id:chunk:$name").await()
+        // get chunk and increase ttl
+        val arguments = GetExArgs.Builder.ex(ttlSeconds)
+        val chunk = commands.getex("video:$id:chunk:$name", arguments).await()
             ?: return null
 
         return chunk

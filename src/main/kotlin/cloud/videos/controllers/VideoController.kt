@@ -8,6 +8,7 @@ import cloud.videos.services.CacheService
 import cloud.videos.services.DatabaseService
 import cloud.videos.services.VideoService
 import com.mongodb.client.gridfs.GridFSBucket
+import io.micronaut.http.HttpHeaders
 import io.micronaut.http.HttpResponse
 import io.micronaut.http.MediaType
 import io.micronaut.http.annotation.Controller
@@ -148,17 +149,22 @@ class VideoController(gridFSBucket: GridFSBucket, private val cacheService: Cach
             val chunkBytesCached = cacheService.getVideoChunk(id, chunkName)
 
             // cache hit
-            if (chunkBytesCached !== null) {
+            if (chunkBytesCached != null) {
                 return HttpResponse.ok(chunkBytesCached)
                     .contentType(MediaType.of("video/mp2t"))
+                    .header(HttpHeaders.CACHE_CONTROL, "public, max-age=31536000, immutable")
             }
 
             // cache miss
             val chunkContent = databaseService.getVideoChunk(id, chunkName)
                 ?: return HttpResponse.notFound(ErrorResponse("Video chunk not found"))
 
+            // cache the chunk
+            cacheService.saveVideoChunk(id, chunkName, chunkContent)
+
             return HttpResponse.ok(chunkContent)
                 .contentType(MediaType.of("video/mp2t"))
+                .header(HttpHeaders.CACHE_CONTROL, "public, max-age=31536000, immutable")
         } catch (exception: CancellationException) {
             throw exception
         } catch (exception: Exception) {
