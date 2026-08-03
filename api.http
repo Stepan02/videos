@@ -1,0 +1,23 @@
+### Video upload
+POST http://localhost:8080/videos/upload
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="video.mp4"
+Content-Type: video/mp4
+
+< C:\path\to\file\video.mp4
+--WebAppBoundary--
+
+### Delete video
+DELETE http://localhost:8080/videos/<id>
+
+### Get video thumbnail
+GET http://localhost:8080/videos/<id>/thumbnail
+
+### Get video manifest
+GET http://localhost:8080/videos/<id>/manifest.m3u8
+
+### Get video chunk (index1.ts, index2.ts,...)
+GET http://localhost:8080/videos/<id>/index1.ts
+Range: bytes=0-
