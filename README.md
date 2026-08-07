@@ -20,3 +20,35 @@ MongoDB GridFS data queries can quickly become very resource heavy and slow - to
 Obviously, storing every video in a cache would not make sense, since the user might not even watch the whole video - the video is cached on demand - this way, frequently watched videos are going to be easily accessible without a single database lookup. In case of a cache miss, however, there is a prolonged delay in the data stream.
 
 To further improve performance, [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) can be used on the frontend to avoid database lookups for video chunks that have already been loaded.
+
+## Frontend
+Since HLS is an Apple-made technology, a standard `video`  HTML element will only support HLS in Safari. To extend the support for other browsers (like Google Chrome, Firefox, etc.) we can use library like [hls.js](https://github.com/video-dev/hls.js).
+
+Under normal circumstances, the `src` attribute would include a link to a media file. In this case, however, a link to `manifest.m3u8` is required.
+
+**Minimal `hls.js` example** ([source](https://github.com/video-dev/hls.js/#embedding-hlsjs))
+```html
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+<!-- Or if you want the latest version from the main branch -->
+<!-- <script src="https://cdn.jsdelivr.net/npm/hls.js@canary"></script> -->
+<video id="video"></video>
+<script>
+  var video = document.getElementById('video');
+  var videoSrc = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
+  if (Hls.isSupported()) {
+    var hls = new Hls();
+    hls.loadSource(videoSrc);
+    hls.attachMedia(video);
+  }
+  // HLS.js is not supported on platforms that do not have Media Source
+  // Extensions (MSE) enabled.
+  //
+  // When the browser has built-in HLS support (check using `canPlayType`),
+  // we can provide an HLS manifest (i.e. .m3u8 URL) directly to the video
+  // element through the `src` property. This is using the built-in support
+  // of the plain video element, without using HLS.js.
+  else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = videoSrc;
+  }
+</script>
+```
