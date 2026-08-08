@@ -21,6 +21,10 @@ Obviously, storing every video in a cache would not make sense, since the user m
 
 To further improve performance, [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) can be used on the frontend to avoid database lookups for video chunks that have already been loaded.
 
+## Video processing
+Videos (in `mp4` format) uploaded using the `/videos/upload` endpoint are processed by [FFmpeg](https://www.ffmpeg.org/) via [JavaCV](https://github.com/bytedeco/javacv). At first, a `manifest.m3u8` file is generated, then the video is split into individual `.ts` chunks. 
+The endpoint also generates a video thumbnail at the 2nd second of the video using FFmpeg. This thumbnail is available on a GET request to `/videos/<id>/thumbnail`.
+
 ## Frontend
 Since HLS is an Apple-made technology, a standard `video`  HTML element will only support HLS in Safari. To extend the support for other browsers (like Google Chrome, Firefox, etc.) we can use library like [hls.js](https://github.com/video-dev/hls.js).
 
