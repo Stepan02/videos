@@ -7,6 +7,7 @@ import cloud.videos.exceptions.FileSizeExceededException
 import cloud.videos.services.CacheService
 import cloud.videos.services.DatabaseService
 import cloud.videos.services.VideoService
+import com.mongodb.client.MongoClient
 import com.mongodb.client.gridfs.GridFSBucket
 import io.micronaut.http.HttpHeaders
 import io.micronaut.http.HttpResponse
@@ -22,10 +23,10 @@ import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 
 @Controller("/videos")
-class VideoController(gridFSBucket: GridFSBucket, private val cacheService: CacheService, private val videoService: VideoService) {
+class VideoController(gridFSBucket: GridFSBucket, mongoClient: MongoClient, private val cacheService: CacheService, private val videoService: VideoService) {
 
     private val logger = LoggerFactory.getLogger(VideoController::class.java)
-    private val databaseService = DatabaseService(gridFSBucket)
+    private val databaseService = DatabaseService(gridFSBucket, mongoClient)
 
     @Post("/upload", consumes = [MediaType.MULTIPART_FORM_DATA])
     suspend fun uploadVideo(file: CompletedFileUpload): HttpResponse<Any> {
@@ -112,6 +113,20 @@ class VideoController(gridFSBucket: GridFSBucket, private val cacheService: Cach
             logger.error(exception.message, exception)
 
             return HttpResponse.serverError(ErrorResponse("Failed to get video thumbnail"))
+        }
+    }
+
+    @Get("/{id}")
+    fun getVideoMetadata(id: String): HttpResponse<Any> {
+        try {
+            val videoMetadata = databaseService.getVideoMetadata(id)
+                ?: return HttpResponse.notFound(ErrorResponse("Metadata not found"))
+
+            return HttpResponse.ok(videoMetadata)
+        } catch (exception: Exception) {
+            logger.error(exception.message, exception)
+
+            return HttpResponse.serverError(ErrorResponse("Failed to get video metadata"))
         }
     }
 

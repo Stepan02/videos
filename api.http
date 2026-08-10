@@ -9,6 +9,9 @@ Content-Type: video/mp4
 < C:\path\to\file\video.mp4
 --WebAppBoundary--
 
+### Get video metadata
+GET http://localhost:8080/videos/<id>
+
 ### Delete video
 DELETE http://localhost:8080/videos/<id>
 

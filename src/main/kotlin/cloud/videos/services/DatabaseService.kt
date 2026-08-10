@@ -1,13 +1,29 @@
 package cloud.videos.services
 
+import com.mongodb.client.MongoClient
+import com.mongodb.client.MongoCollection
 import com.mongodb.client.gridfs.GridFSBucket
 import com.mongodb.client.model.Filters
+import com.mongodb.client.model.Filters.eq
+import io.micronaut.serde.annotation.Serdeable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.bson.Document
 import org.bson.types.ObjectId
 import java.io.ByteArrayInputStream
 
-class DatabaseService(private val gridFSBucket: GridFSBucket) {
+@Serdeable
+data class VideoMetadata(
+    val id: String,
+    val size: Long,
+    val uploadDate: String,
+)
+
+class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoClient: MongoClient) {
+
+    fun connectDatabase(): MongoCollection<Document?> = mongoClient
+        .getDatabase("videos")
+        .getCollection("videos.files")
 
     suspend fun saveVideo(data: TranscodedVideoOutput): String = withContext(Dispatchers.IO) {
         // save manifest and file name
@@ -30,25 +46,40 @@ class DatabaseService(private val gridFSBucket: GridFSBucket) {
         return@withContext videoId
     }
 
+    fun getVideoMetadata(id: String): VideoMetadata? {
+        if (!ObjectId.isValid(id)) return null
+
+        val objectId = ObjectId(id)
+        val videoMetadata = connectDatabase()
+            .find(eq("_id", objectId))
+            .firstOrNull() ?: return null
+
+        return VideoMetadata(
+            id = id,
+            size = videoMetadata.getLong("length") ?: 0L,
+            uploadDate = videoMetadata.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown"
+        )
+    }
+
     suspend fun getVideoManifest(id: String): ByteArray? = withContext(Dispatchers.IO) {
         if (!ObjectId.isValid(id)) return@withContext null
 
         val objectId = ObjectId(id)
-        val videoManifest = gridFSBucket.find(Filters.eq("_id", objectId)).first()
+        val videoManifest = gridFSBucket.find(eq("_id", objectId)).first()
             ?: return@withContext null
 
         return@withContext gridFSBucket.openDownloadStream(videoManifest.objectId).readBytes()
     }
 
     suspend fun getVideoThumbnail(id: String): ByteArray? = withContext(Dispatchers.IO) {
-        val videoThumbnail = gridFSBucket.find(Filters.eq("filename", "data/$id/thumbnail.jpg")).first()
+        val videoThumbnail = gridFSBucket.find(eq("filename", "data/$id/thumbnail.jpg")).first()
             ?: return@withContext null
 
         return@withContext gridFSBucket.openDownloadStream(videoThumbnail.objectId).readBytes()
     }
 
     suspend fun getVideoChunk(id: String, name: String): ByteArray? = withContext(Dispatchers.IO) {
-        val videoChunk = gridFSBucket.find(Filters.eq("filename", "data/$id/chunk/$name")).first()
+        val videoChunk = gridFSBucket.find(eq("filename", "data/$id/chunk/$name")).first()
             ?: return@withContext null
 
         return@withContext gridFSBucket.openDownloadStream(videoChunk.objectId).readBytes()
@@ -61,7 +92,7 @@ class DatabaseService(private val gridFSBucket: GridFSBucket) {
         val objectId = ObjectId(id)
 
         // check whether video manifest exists - return success if it does not exist
-        gridFSBucket.find(Filters.eq("_id", objectId)).first() ?: return@withContext true
+        gridFSBucket.find(eq("_id", objectId)).first() ?: return@withContext true
 
         // delete thumbnail and video chunks
         val videoFiles = gridFSBucket.find(Filters.regex("filename", "^data/$id/")).toList()
