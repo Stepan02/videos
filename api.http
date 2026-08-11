@@ -9,6 +9,18 @@ Content-Type: video/mp4
 < C:\path\to\file\video.mp4
 --WebAppBoundary--
 
+### Get videos list (10 newest videos)
+GET http://localhost:8080/videos
+
+### Get videos list with custom limit
+GET http://localhost:8080/videos?limit=20
+
+### Get videos list with cursor
+GET http://localhost:8080/videos?lastVideoid=<id>
+
+### Get videos list with cursor and limit
+GET http://localhost:8080/videos?limit=20&lastVideoid=<id>
+
 ### Get video metadata
 GET http://localhost:8080/videos/<id>
 

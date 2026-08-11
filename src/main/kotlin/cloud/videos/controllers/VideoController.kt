@@ -12,10 +12,7 @@ import com.mongodb.client.gridfs.GridFSBucket
 import io.micronaut.http.HttpHeaders
 import io.micronaut.http.HttpResponse
 import io.micronaut.http.MediaType
-import io.micronaut.http.annotation.Controller
-import io.micronaut.http.annotation.Delete
-import io.micronaut.http.annotation.Get
-import io.micronaut.http.annotation.Post
+import io.micronaut.http.annotation.*
 import io.micronaut.http.multipart.CompletedFileUpload
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +24,28 @@ class VideoController(gridFSBucket: GridFSBucket, mongoClient: MongoClient, priv
 
     private val logger = LoggerFactory.getLogger(VideoController::class.java)
     private val databaseService = DatabaseService(gridFSBucket, mongoClient)
+
+    @Get("/")
+    suspend fun getVideosMetadataList(@QueryValue limit: String?, @QueryValue lastVideoId: String? = null): HttpResponse<out Any> {
+        try {
+            val recordsLimit = if (limit.isNullOrBlank()) 10 else limit.toIntOrNull()
+                ?: return HttpResponse.badRequest(ErrorResponse("Limit must be a valid number"))
+
+            if (recordsLimit < 1) {
+                return HttpResponse.badRequest(ErrorResponse("Limit must be greater than 0"))
+            }
+
+            val videosList = databaseService.getVideosMetadataList(recordsLimit, lastVideoId)
+
+            return HttpResponse.ok(videosList)
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            logger.error(exception.message, exception)
+
+            return HttpResponse.serverError(ErrorResponse("Failed to get videos list"))
+        }
+    }
 
     @Post("/upload", consumes = [MediaType.MULTIPART_FORM_DATA])
     suspend fun uploadVideo(file: CompletedFileUpload): HttpResponse<Any> {

@@ -5,6 +5,8 @@ import com.mongodb.client.MongoCollection
 import com.mongodb.client.gridfs.GridFSBucket
 import com.mongodb.client.model.Filters
 import com.mongodb.client.model.Filters.eq
+import com.mongodb.client.model.Filters.lt
+import com.mongodb.client.model.Sorts.descending
 import io.micronaut.serde.annotation.Serdeable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -44,6 +46,34 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
         }
 
         return@withContext videoId
+    }
+
+    suspend fun getVideosMetadataList(limit: Int = 10, lastVideoId: String?): List<VideoMetadata> = withContext(Dispatchers.IO) {
+        if (lastVideoId != null && !ObjectId.isValid(lastVideoId)) {
+            return@withContext emptyList()
+        }
+
+        // include older videos
+        val lastVideoFilter = if (lastVideoId != null) {
+            lt("_id", ObjectId(lastVideoId))
+        } else {
+            // filter is blank if no lastVideoId is provided - return newest ones
+            Document()
+        }
+
+        return@withContext connectDatabase()
+            .find(lastVideoFilter)
+            .sort(descending("_id"))
+            .limit(limit)
+            .toList()
+            .filterNotNull()
+            .map { videoDocument ->
+                VideoMetadata(
+                    id = videoDocument.getObjectId("_id").toHexString(),
+                    size = videoDocument.getLong("length") ?: 0L,
+                    uploadDate = videoDocument.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown"
+                )
+            }
     }
 
     fun getVideoMetadata(id: String): VideoMetadata? {
