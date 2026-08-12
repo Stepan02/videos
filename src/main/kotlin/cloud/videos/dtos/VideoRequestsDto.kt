@@ -5,6 +5,7 @@ import io.micronaut.serde.annotation.Serdeable
 @Serdeable
 data class UploadResponse(
     val id: String,
+    val name: String,
     val filename: String,
     val size: String
 )

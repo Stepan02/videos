@@ -3,9 +3,9 @@ package cloud.videos.services
 import com.mongodb.client.MongoClient
 import com.mongodb.client.MongoCollection
 import com.mongodb.client.gridfs.GridFSBucket
+import com.mongodb.client.gridfs.model.GridFSUploadOptions
 import com.mongodb.client.model.Filters
-import com.mongodb.client.model.Filters.eq
-import com.mongodb.client.model.Filters.lt
+import com.mongodb.client.model.Filters.*
 import com.mongodb.client.model.Sorts.descending
 import io.micronaut.serde.annotation.Serdeable
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +17,7 @@ import java.io.ByteArrayInputStream
 @Serdeable
 data class VideoMetadata(
     val id: String,
+    val name: String,
     val size: Long,
     val uploadDate: String,
 )
@@ -27,11 +28,17 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
         .getDatabase("videos")
         .getCollection("videos.files")
 
-    suspend fun saveVideo(data: TranscodedVideoOutput): String = withContext(Dispatchers.IO) {
+    suspend fun saveVideo(data: TranscodedVideoOutput, name: String): String = withContext(Dispatchers.IO) {
         // save manifest and file name
         val manifestStream = ByteArrayInputStream(data.playlist)
 
-        val videoId = gridFSBucket.uploadFromStream("manifest.m3u8", manifestStream)
+        // add video name to the object
+        val videoMetadata = Document().apply {
+            append("name", name)
+        }
+        val options = GridFSUploadOptions().metadata(videoMetadata)
+
+        val videoId = gridFSBucket.uploadFromStream("manifest.m3u8", manifestStream, options)
             .toHexString()
 
         // save thumbnail
@@ -53,12 +60,15 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
             return@withContext emptyList()
         }
 
+        // exclude manifest
+        val filter = eq("filename", "manifest.m3u8")
+
         // include older videos
         val lastVideoFilter = if (lastVideoId != null) {
-            lt("_id", ObjectId(lastVideoId))
+            and(lt("_id", ObjectId(lastVideoId)), filter)
         } else {
             // filter is blank if no lastVideoId is provided - return newest ones
-            Document()
+            filter
         }
 
         return@withContext connectDatabase()
@@ -70,6 +80,8 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
             .map { videoDocument ->
                 VideoMetadata(
                     id = videoDocument.getObjectId("_id").toHexString(),
+                    name = videoDocument.get("metadata", Document::class.java)
+                        ?.getString("name") ?: "unknown",
                     size = videoDocument.getLong("length") ?: 0L,
                     uploadDate = videoDocument.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown"
                 )
@@ -86,6 +98,8 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
 
         return VideoMetadata(
             id = id,
+            name = videoMetadata.get("metadata", Document::class.java)
+                ?.getString("name") ?: "unknown",
             size = videoMetadata.getLong("length") ?: 0L,
             uploadDate = videoMetadata.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown"
         )

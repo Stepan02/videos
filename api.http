@@ -7,6 +7,10 @@ Content-Disposition: form-data; name="file"; filename="video.mp4"
 Content-Type: video/mp4
 
 < C:\path\to\file\video.mp4
+--WebAppBoundary
+Content-Disposition: form-data; name="name"
+
+Video name
 --WebAppBoundary--
 
 ### Get videos list (10 newest videos)
@@ -16,10 +20,10 @@ GET http://localhost:8080/videos
 GET http://localhost:8080/videos?limit=20
 
 ### Get videos list with cursor
-GET http://localhost:8080/videos?lastVideoid=<id>
+GET http://localhost:8080/videos?lastVideoId=<id>
 
 ### Get videos list with cursor and limit
-GET http://localhost:8080/videos?limit=20&lastVideoid=<id>
+GET http://localhost:8080/videos?limit=20&lastVideoId=<id>
 
 ### Get video metadata
 GET http://localhost:8080/videos/<id>

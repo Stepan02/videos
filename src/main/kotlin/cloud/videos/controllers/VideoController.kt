@@ -4,6 +4,7 @@ import cloud.videos.dtos.ErrorResponse
 import cloud.videos.dtos.UploadResponse
 import cloud.videos.exceptions.EmptyFileException
 import cloud.videos.exceptions.FileSizeExceededException
+import cloud.videos.exceptions.MissingNameException
 import cloud.videos.services.CacheService
 import cloud.videos.services.DatabaseService
 import cloud.videos.services.VideoService
@@ -48,7 +49,7 @@ class VideoController(gridFSBucket: GridFSBucket, mongoClient: MongoClient, priv
     }
 
     @Post("/upload", consumes = [MediaType.MULTIPART_FORM_DATA])
-    suspend fun uploadVideo(file: CompletedFileUpload): HttpResponse<Any> {
+    suspend fun uploadVideo(@Part file: CompletedFileUpload, @Part name: String): HttpResponse<Any> {
         try {
             val maxFileSize: Long = 500 * 1024 * 1024 // 500 MB upload file limit
 
@@ -58,6 +59,10 @@ class VideoController(gridFSBucket: GridFSBucket, mongoClient: MongoClient, priv
 
             if (file.size > maxFileSize) {
                 throw FileSizeExceededException("Maximum file size exceeded")
+            }
+
+            if (name.isBlank()) {
+                throw MissingNameException("Video name is required")
             }
 
             logger.info("Accepted file {} (size: {} bytes)", file.filename, file.size)
@@ -78,7 +83,7 @@ class VideoController(gridFSBucket: GridFSBucket, mongoClient: MongoClient, priv
 
             // upload video to database
             val videoId = withContext(Dispatchers.IO) {
-                databaseService.saveVideo(transcodedVideo)
+                databaseService.saveVideo(transcodedVideo, name)
             }
 
             logger.info("Caching video...")
@@ -93,12 +98,15 @@ class VideoController(gridFSBucket: GridFSBucket, mongoClient: MongoClient, priv
             return HttpResponse.created(
                 UploadResponse(
                     id = videoId,
+                    name = name,
                     filename = file.filename,
                     size = file.size.toString(),
                 )
             )
         } catch (exception: CancellationException) {
             throw exception
+        } catch (exception: MissingNameException) {
+            return HttpResponse.badRequest(ErrorResponse(exception.message.toString()))
         } catch (exception: IllegalStateException) {
             return HttpResponse.serverError(ErrorResponse(exception.message.toString()))
         } catch (exception: EmptyFileException) {
