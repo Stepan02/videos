@@ -18,7 +18,7 @@ import java.io.ByteArrayInputStream
 data class VideoMetadata(
     val id: String,
     val name: String,
-    val size: Long,
+    val totalSize: Long,
     val uploadDate: String,
 )
 
@@ -32,9 +32,15 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
         // save manifest and file name
         val manifestStream = ByteArrayInputStream(data.playlist)
 
-        // add video name to the object
+        // calculate video size
+        val videoSize = data.playlist.size.toLong() +
+            data.thumbnail.size.toLong() +
+            data.chunks.values.sumOf { it.size.toLong() }
+
+        // add video name and size to the object
         val videoMetadata = Document().apply {
             append("name", name)
+            append("totalSize", videoSize)
         }
         val options = GridFSUploadOptions().metadata(videoMetadata)
 
@@ -82,7 +88,8 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
                     id = videoDocument.getObjectId("_id").toHexString(),
                     name = videoDocument.get("metadata", Document::class.java)
                         ?.getString("name") ?: "unknown",
-                    size = videoDocument.getLong("length") ?: 0L,
+                    totalSize = videoDocument.get("metadata", Document::class.java)
+                        ?.getLong("totalSize") ?: 0L,
                     uploadDate = videoDocument.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown"
                 )
             }
@@ -100,7 +107,8 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
             id = id,
             name = videoMetadata.get("metadata", Document::class.java)
                 ?.getString("name") ?: "unknown",
-            size = videoMetadata.getLong("length") ?: 0L,
+            totalSize = videoMetadata.get("metadata", Document::class.java)
+                ?.getLong("totalSize") ?: 0L,
             uploadDate = videoMetadata.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown"
         )
     }
