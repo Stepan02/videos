@@ -13,6 +13,7 @@ import kotlinx.coroutines.withContext
 import org.bson.Document
 import org.bson.types.ObjectId
 import java.io.ByteArrayInputStream
+import java.util.regex.Pattern
 
 @Serdeable
 data class VideoMetadata(
@@ -62,9 +63,7 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
     }
 
     suspend fun getVideosMetadataList(limit: Int = 10, lastVideoId: String?): List<VideoMetadata> = withContext(Dispatchers.IO) {
-        if (lastVideoId != null && !ObjectId.isValid(lastVideoId)) {
-            return@withContext emptyList()
-        }
+        if (lastVideoId != null && !ObjectId.isValid(lastVideoId)) return@withContext emptyList()
 
         // exclude manifest
         val filter = eq("filename", "manifest.m3u8")
@@ -135,6 +134,43 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
             ?: return@withContext null
 
         return@withContext gridFSBucket.openDownloadStream(videoChunk.objectId).readBytes()
+    }
+
+    suspend fun searchVideoByName(name: String, limit: Int, lastVideoId: String?) = withContext(Dispatchers.IO) {
+        if (name.isBlank()) return@withContext emptyList()
+        if (lastVideoId != null && !ObjectId.isValid(lastVideoId)) return@withContext emptyList()
+
+        val fileFilter = and(
+            eq("filename", "manifest.m3u8"),
+            regex("metadata.name", Pattern.quote(name), "i")
+        )
+
+        // include older videos
+        val lastVideoFilter = if (lastVideoId != null) {
+            and(
+                fileFilter,
+                lt("_id", ObjectId(lastVideoId)))
+        } else {
+            // filter is blank if no lastVideoId is provided - return newest ones
+            fileFilter
+        }
+
+        return@withContext connectDatabase()
+            .find(lastVideoFilter)
+            .sort(descending("_id"))
+            .limit(limit)
+            .toList()
+            .filterNotNull()
+            .map { videoDocument ->
+                VideoMetadata(
+                    id = videoDocument.getObjectId("_id").toHexString(),
+                    name = videoDocument.get("metadata", Document::class.java)
+                        ?.getString("name") ?: "unknown",
+                    totalSize = videoDocument.get("metadata", Document::class.java)
+                        ?.getLong("totalSize") ?: 0L,
+                    uploadDate = videoDocument.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown"
+                )
+            }
     }
 
     suspend fun deleteVideo(id: String): Boolean = withContext(Dispatchers.IO) {

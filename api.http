@@ -25,6 +25,9 @@ GET http://localhost:8080/videos?lastVideoId=<id>
 ### Get videos list with cursor and limit
 GET http://localhost:8080/videos?limit=20&lastVideoId=<id>
 
+### Search video by name (chainable with limit and lastVideoId parameters)
+GET http://localhost:8080/videos?search=<name>
+
 ### Get video metadata
 GET http://localhost:8080/videos/<id>
 

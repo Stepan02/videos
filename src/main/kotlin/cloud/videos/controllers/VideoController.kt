@@ -21,13 +21,22 @@ import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 
 @Controller("/videos")
-class VideoController(gridFSBucket: GridFSBucket, mongoClient: MongoClient, private val cacheService: CacheService, private val videoService: VideoService) {
+class VideoController(
+    gridFSBucket: GridFSBucket,
+    mongoClient: MongoClient,
+    private val cacheService: CacheService,
+    private val videoService: VideoService
+) {
 
     private val logger = LoggerFactory.getLogger(VideoController::class.java)
     private val databaseService = DatabaseService(gridFSBucket, mongoClient)
 
     @Get("/")
-    suspend fun getVideosMetadataList(@QueryValue limit: String?, @QueryValue lastVideoId: String? = null): HttpResponse<out Any> {
+    suspend fun getVideosMetadataList(
+        @QueryValue limit: String?,
+        @QueryValue lastVideoId: String? = null,
+        @QueryValue search: String? = null
+    ): HttpResponse<out Any> {
         try {
             val recordsLimit = if (limit.isNullOrBlank()) 10 else limit.toIntOrNull()
                 ?: return HttpResponse.badRequest(ErrorResponse("Limit must be a valid number"))
@@ -36,7 +45,13 @@ class VideoController(gridFSBucket: GridFSBucket, mongoClient: MongoClient, priv
                 return HttpResponse.badRequest(ErrorResponse("Limit must be greater than 0"))
             }
 
-            val videosList = databaseService.getVideosMetadataList(recordsLimit, lastVideoId)
+            val videosList = if (!search.isNullOrBlank()) {
+                // search for the video if the search parameter is present
+                databaseService.searchVideoByName(search, recordsLimit, lastVideoId)
+            } else {
+                // get video list
+                databaseService.getVideosMetadataList(recordsLimit, lastVideoId)
+            }
 
             return HttpResponse.ok(videosList)
         } catch (exception: CancellationException) {
