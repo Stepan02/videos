@@ -56,3 +56,12 @@ Under normal circumstances, the `src` attribute would include a link to a media 
   }
 </script>
 ```
+
+## How to Run
+System requirements: Java 25, Docker
+
+1. Clone this repository
+2. Start database and cache: `docker compose up -d`
+3. Start backend: 
+   - Linux/macOS: `./gradlew run` 
+   - Windows: `.\gradlew.bat run`
