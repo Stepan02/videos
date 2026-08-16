@@ -234,11 +234,6 @@ class VideoController(
     @Delete("/{id}")
     suspend fun deleteVideo(id: String): HttpResponse<out Any> {
         try {
-            // delete from cache
-            cacheService.deleteVideo(id)
-
-            logger.info("Video $id deleted from cache")
-
             // delete from database
             val videoDeletedFromDatabase = databaseService.deleteVideo(id)
 
@@ -247,7 +242,12 @@ class VideoController(
                 return HttpResponse.badRequest(ErrorResponse("Invalid video ID"))
             }
 
-            logger.info("Video $id deleted from database")
+            logger.info("Video {} deleted from database", id)
+
+            // delete from cache
+            cacheService.deleteVideo(id)
+
+            logger.info("Video {} deleted from cache", id)
 
             return HttpResponse.noContent()
         } catch (exception: CancellationException) {
