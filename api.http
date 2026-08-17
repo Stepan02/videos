@@ -34,6 +34,15 @@ GET http://localhost:8080/videos/<id>
 ### Delete video
 DELETE http://localhost:8080/videos/<id>
 
+### Bulk delete videos
+DELETE http://localhost:8080/videos/bulk
+Content-Type: application/json
+
+[
+    "<id1>",
+    "<id2>"
+]
+
 ### Get video thumbnail
 GET http://localhost:8080/videos/<id>/thumbnail
 

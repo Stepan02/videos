@@ -258,4 +258,35 @@ class VideoController(
             return HttpResponse.serverError(ErrorResponse("Failed to delete video"))
         }
     }
+
+    @Delete("/bulk")
+    suspend fun deleteVideos(@Body videos: List<String>): HttpResponse<out Any> {
+        try {
+            logger.info("Deleting {} videos", videos.size)
+
+            for (id in videos) {
+                // delete from database
+                val videoDeletedFromDatabase = databaseService.deleteVideo(id)
+
+                // deleteVideo returns false if the video id has invalid format
+                if (!videoDeletedFromDatabase) {
+                    logger.error("Failed to delete video {}", id)
+                    continue
+                }
+
+                // delete from cache
+                cacheService.deleteVideo(id)
+
+                logger.info("Video {} deleted from cache", id)
+            }
+
+            return HttpResponse.noContent()
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            logger.error(exception.message, exception)
+
+            return HttpResponse.serverError(ErrorResponse("Failed to delete videos"))
+        }
+    }
 }
