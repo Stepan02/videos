@@ -15,9 +15,7 @@ import io.micronaut.http.HttpResponse
 import io.micronaut.http.MediaType
 import io.micronaut.http.annotation.*
 import io.micronaut.http.multipart.CompletedFileUpload
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
 
 @Controller("/videos")
@@ -264,20 +262,23 @@ class VideoController(
         try {
             logger.info("Deleting {} videos", videos.size)
 
-            for (id in videos) {
-                // delete from database
-                val videoDeletedFromDatabase = databaseService.deleteVideo(id)
+            coroutineScope {
+                videos.map { id ->
+                    async {
+                        // delete from database
+                        val videoDeletedFromDatabase = databaseService.deleteVideo(id)
 
-                // deleteVideo returns false if the video id has invalid format
-                if (!videoDeletedFromDatabase) {
-                    logger.error("Failed to delete video {}", id)
-                    continue
-                }
+                        // deleteVideo returns false if the video id has invalid format
+                        if (!videoDeletedFromDatabase) {
+                            logger.error("Failed to delete video {}", id)
+                        } else {
+                            // delete from cache
+                            cacheService.deleteVideo(id)
 
-                // delete from cache
-                cacheService.deleteVideo(id)
-
-                logger.info("Video {} deleted from cache", id)
+                            logger.info("Video {} deleted from cache", id)
+                        }
+                    }
+                }.awaitAll()
             }
 
             return HttpResponse.noContent()
