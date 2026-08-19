@@ -15,3 +15,7 @@ class FileExistsException(
 class MissingNameException(
     message: String = "Name is missing"
 ) : RuntimeException(message)
+
+class InvalidFileFormatException(
+    message: String = "Invalid file format"
+) : RuntimeException(message)

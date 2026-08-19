@@ -4,6 +4,7 @@ import cloud.videos.dtos.ErrorResponse
 import cloud.videos.dtos.UploadResponse
 import cloud.videos.exceptions.EmptyFileException
 import cloud.videos.exceptions.FileSizeExceededException
+import cloud.videos.exceptions.InvalidFileFormatException
 import cloud.videos.exceptions.MissingNameException
 import cloud.videos.services.CacheService
 import cloud.videos.services.DatabaseService
@@ -12,6 +13,7 @@ import com.mongodb.client.MongoClient
 import com.mongodb.client.gridfs.GridFSBucket
 import io.micronaut.http.HttpHeaders
 import io.micronaut.http.HttpResponse
+import io.micronaut.http.HttpStatus
 import io.micronaut.http.MediaType
 import io.micronaut.http.annotation.*
 import io.micronaut.http.multipart.CompletedFileUpload
@@ -64,6 +66,14 @@ class VideoController(
     @Post("/upload", consumes = [MediaType.MULTIPART_FORM_DATA])
     suspend fun uploadVideo(@Part file: CompletedFileUpload, @Part name: String): HttpResponse<Any> {
         try {
+            // https://www.ffmpeg.org/general.html#Supported-File-Formats_002c-Codecs-or-Features
+            val allowedFileFormats = setOf("mp4", "m4v", "mov", "webm", "mkv", "avi", "flv", "wmv", "3gp")
+            val uploadedFileFormat = file.filename.substringAfterLast(".", "").lowercase()
+
+            if (uploadedFileFormat !in allowedFileFormats) {
+                throw InvalidFileFormatException("Invalid file format")
+            }
+
             val maxFileSize: Long = 500 * 1024 * 1024 // 500 MB upload file limit
 
             if (file.size <= 0) {
@@ -124,8 +134,11 @@ class VideoController(
             return HttpResponse.serverError(ErrorResponse(exception.message.toString()))
         } catch (exception: EmptyFileException) {
             return HttpResponse.badRequest(ErrorResponse(exception.message.toString()))
-        } catch (exception: FileSizeExceededException) {
+        } catch (exception: InvalidFileFormatException) {
             return HttpResponse.badRequest(ErrorResponse(exception.message.toString()))
+        } catch (exception: FileSizeExceededException) {
+            return HttpResponse.status<String>(HttpStatus.REQUEST_ENTITY_TOO_LARGE)
+                .body(ErrorResponse(exception.message.toString()))
         }
     }
 
