@@ -2,6 +2,7 @@ package cloud.videos.controllers
 
 import cloud.videos.dtos.ErrorResponse
 import cloud.videos.dtos.UploadResponse
+import cloud.videos.dtos.VideoBulkDeleteResponse
 import cloud.videos.exceptions.EmptyFileException
 import cloud.videos.exceptions.FileSizeExceededException
 import cloud.videos.exceptions.InvalidFileFormatException
@@ -275,7 +276,7 @@ class VideoController(
         try {
             logger.info("Deleting {} videos", videos.size)
 
-            coroutineScope {
+            val failedDeletionsList = coroutineScope {
                 videos.map { id ->
                     async {
                         // delete from database
@@ -284,17 +285,30 @@ class VideoController(
                         // deleteVideo returns false if the video id has invalid format
                         if (!videoDeletedFromDatabase) {
                             logger.error("Failed to delete video {}", id)
+
+                            id // return id of the video in case of a failure
                         } else {
                             // delete from cache
                             cacheService.deleteVideo(id)
 
                             logger.info("Video {} deleted from cache", id)
+
+                            null // return null if the video was deleted successfully
                         }
                     }
-                }.awaitAll()
+                }.awaitAll().filterNotNull()
             }
 
-            return HttpResponse.noContent()
+            val failedCount = failedDeletionsList.size
+            val deletedCount = videos.size - failedCount
+
+            return HttpResponse.ok(
+                VideoBulkDeleteResponse(
+                    deletedCount = deletedCount,
+                    failedCount = failedCount,
+                    failedDeletions = failedDeletionsList
+                )
+            )
         } catch (exception: CancellationException) {
             throw exception
         } catch (exception: Exception) {

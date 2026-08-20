@@ -38,3 +38,10 @@ data class VideoResponse(
         return result
     }
 }
+
+@Serdeable
+data class VideoBulkDeleteResponse(
+    val deletedCount: Int,
+    val failedCount: Int,
+    val failedDeletions: List<String>
+)
