@@ -211,11 +211,13 @@ class VideoController(
         }
     }
 
-    @Get("/{id}/{chunkName}")
+    @Get("/{id}/{chunkName}.ts")
     suspend fun getVideoChunk(id: String, chunkName: String): HttpResponse<out Any> {
         try {
+            val chunkFile = "$chunkName.ts"
+
             // cache
-            val chunkBytesCached = cacheService.getVideoChunk(id, chunkName)
+            val chunkBytesCached = cacheService.getVideoChunk(id, chunkFile)
 
             // cache hit
             if (chunkBytesCached != null) {
@@ -225,11 +227,11 @@ class VideoController(
             }
 
             // cache miss
-            val chunkContent = databaseService.getVideoChunk(id, chunkName)
+            val chunkContent = databaseService.getVideoChunk(id, chunkFile)
                 ?: return HttpResponse.notFound(ErrorResponse("Video chunk not found"))
 
             // cache the chunk
-            cacheService.saveVideoChunk(id, chunkName, chunkContent)
+            cacheService.saveVideoChunk(id, chunkFile, chunkContent)
 
             return HttpResponse.ok(chunkContent)
                 .contentType(MediaType.of("video/mp2t"))
