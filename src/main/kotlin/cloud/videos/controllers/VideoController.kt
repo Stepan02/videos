@@ -157,7 +157,7 @@ class VideoController(
 
             // cache miss
             val thumbnailBytes = databaseService.getVideoThumbnail(id)
-                ?: return HttpResponse.notFound(ErrorResponse("Thumbnail not found"))
+                ?: return HttpResponse.notFound(ErrorResponse("Thumbnail does not exist or is currently being processed, try again later"))
 
             return HttpResponse.ok(thumbnailBytes)
                 .contentType(MediaType.IMAGE_JPEG)
@@ -174,7 +174,7 @@ class VideoController(
     fun getVideoMetadata(id: String): HttpResponse<Any> {
         try {
             val videoMetadata = databaseService.getVideoMetadata(id)
-                ?: return HttpResponse.notFound(ErrorResponse("Metadata not found"))
+                ?: return HttpResponse.notFound(ErrorResponse("Video does not exist or is currently being processed, try again later"))
 
             return HttpResponse.ok(videoMetadata)
         } catch (exception: Exception) {
@@ -198,7 +198,7 @@ class VideoController(
 
             // cache miss
             val manifestContent = databaseService.getVideoManifest(id)
-                ?: return HttpResponse.notFound(ErrorResponse("Manifest not found"))
+                ?: return HttpResponse.notFound(ErrorResponse("Video does not exist or is currently being processed, try again later"))
 
             return HttpResponse.ok(manifestContent)
                 .contentType(MediaType.of("application/x-mpegurl"))
@@ -228,7 +228,7 @@ class VideoController(
 
             // cache miss
             val chunkContent = databaseService.getVideoChunk(id, chunkFile)
-                ?: return HttpResponse.notFound(ErrorResponse("Video chunk not found"))
+                ?: return HttpResponse.notFound(ErrorResponse("Chunk does not exist or is currently being processed, try again later"))
 
             // cache the chunk
             cacheService.saveVideoChunk(id, chunkFile, chunkContent)
