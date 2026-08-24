@@ -10,6 +10,7 @@ import com.mongodb.client.model.Sorts.descending
 import io.micronaut.serde.annotation.Serdeable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.bson.BsonObjectId
 import org.bson.Document
 import org.bson.types.ObjectId
 import java.io.ByteArrayInputStream
@@ -29,7 +30,10 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
         .getDatabase("videos")
         .getCollection("videos.files")
 
-    suspend fun saveVideo(data: TranscodedVideoOutput, name: String): String = withContext(Dispatchers.IO) {
+    suspend fun saveVideo(videoId: ObjectId, data: TranscodedVideoOutput, name: String): String = withContext(Dispatchers.IO) {
+        val objectId = BsonObjectId(videoId)
+        val videoObjectId = videoId.toHexString()
+
         // save manifest and file name
         val manifestStream = ByteArrayInputStream(data.playlist)
 
@@ -45,21 +49,20 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
         }
         val options = GridFSUploadOptions().metadata(videoMetadata)
 
-        val videoId = gridFSBucket.uploadFromStream("manifest.m3u8", manifestStream, options)
-            .toHexString()
+        gridFSBucket.uploadFromStream(objectId, "manifest.m3u8", manifestStream, options)
 
         // save thumbnail
         val thumbnailStream = ByteArrayInputStream(data.thumbnail)
-        gridFSBucket.uploadFromStream("data/$videoId/thumbnail.jpg", thumbnailStream)
+        gridFSBucket.uploadFromStream("data/$videoObjectId/thumbnail.jpg", thumbnailStream)
 
         // save video chunks
         data.chunks.forEach { (chunkName, bytes) ->
             val chunkStream = ByteArrayInputStream(bytes)
 
-            gridFSBucket.uploadFromStream("data/$videoId/chunk/$chunkName", chunkStream)
+            gridFSBucket.uploadFromStream("data/$videoObjectId/chunk/$chunkName", chunkStream)
         }
 
-        return@withContext videoId
+        return@withContext videoObjectId
     }
 
     suspend fun getVideosMetadataList(limit: Int = 10, lastVideoId: String?): List<VideoMetadata> = withContext(Dispatchers.IO) {
@@ -136,7 +139,7 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
         return@withContext gridFSBucket.openDownloadStream(videoChunk.objectId).readBytes()
     }
 
-    suspend fun searchVideoByName(name: String, limit: Int, lastVideoId: String?) = withContext(Dispatchers.IO) {
+    suspend fun searchVideoByName(name: String, limit: Int, lastVideoId: String?): List<VideoMetadata> = withContext(Dispatchers.IO) {
         if (name.isBlank()) return@withContext emptyList()
         if (lastVideoId != null && !ObjectId.isValid(lastVideoId)) return@withContext emptyList()
 

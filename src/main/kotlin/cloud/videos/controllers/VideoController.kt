@@ -19,6 +19,7 @@ import io.micronaut.http.MediaType
 import io.micronaut.http.annotation.*
 import io.micronaut.http.multipart.CompletedFileUpload
 import kotlinx.coroutines.*
+import org.bson.types.ObjectId
 import org.slf4j.LoggerFactory
 
 @Controller("/videos")
@@ -65,7 +66,7 @@ class VideoController(
     }
 
     @Post("/upload", consumes = [MediaType.MULTIPART_FORM_DATA])
-    suspend fun uploadVideo(@Part file: CompletedFileUpload, @Part name: String): HttpResponse<Any> {
+    fun uploadVideo(@Part file: CompletedFileUpload, @Part name: String): HttpResponse<Any> {
         try {
             // https://www.ffmpeg.org/general.html#Supported-File-Formats_002c-Codecs-or-Features
             val allowedFileFormats = setOf("mp4", "m4v", "mov", "webm", "mkv", "avi", "flv", "wmv", "3gp")
@@ -89,35 +90,46 @@ class VideoController(
                 throw MissingNameException("Video name is required")
             }
 
-            logger.info("Accepted file {} (size: {} bytes)", file.filename, file.size)
+            // generate video id
+            val videoObjectId = ObjectId()
+            val videoId = videoObjectId.toHexString()
 
-            // measure ffmpeg post-processing time
-            val processingStartTime = System.currentTimeMillis()
-            logger.info("Starting video processing...")
+            // start processing coroutine
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    logger.info("Accepted file {} (size: {} bytes)", file.filename, file.size)
 
-            // transcode the video
-            val transcodedVideo = withContext(Dispatchers.IO) {
-                file.inputStream.use { stream ->
-                    videoService.processVideo(stream)
+                    // measure ffmpeg post-processing time
+                    val processingStartTime = System.currentTimeMillis()
+                    logger.info("Starting video processing...")
+
+                    // transcode the video
+                    val transcodedVideo = withContext(Dispatchers.IO) {
+                        file.inputStream.use { stream ->
+                            videoService.processVideo(stream)
+                        }
+                    }
+
+                    val processingDuration = System.currentTimeMillis() - processingStartTime
+                    logger.info("Video processing finished in {} ms", processingDuration)
+
+                    // upload video to database
+                    val videoId = withContext(Dispatchers.IO) {
+                        databaseService.saveVideo(videoObjectId, transcodedVideo, name)
+                    }
+
+                    logger.info("Caching video...")
+
+                    // upload video to cache
+                    withContext(Dispatchers.IO) {
+                        cacheService.saveVideo(videoId, transcodedVideo)
+                    }
+
+                    logger.info("Video {} cached", videoId)
+                } catch (exception: Exception) {
+                    logger.error("Failed to process video {}: {}", videoId, exception.message)
                 }
             }
-
-            val processingDuration = System.currentTimeMillis() - processingStartTime
-            logger.info("Video processing finished in {} ms", processingDuration)
-
-            // upload video to database
-            val videoId = withContext(Dispatchers.IO) {
-                databaseService.saveVideo(transcodedVideo, name)
-            }
-
-            logger.info("Caching video...")
-
-            // upload video to cache
-            withContext(Dispatchers.IO) {
-                cacheService.saveVideo(videoId, transcodedVideo)
-            }
-
-            logger.info("Video {} cached", videoId)
 
             return HttpResponse.created(
                 UploadResponse(
