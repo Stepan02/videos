@@ -103,4 +103,25 @@ class CacheService(private val connection: StatefulRedisConnection<String, ByteA
         // bulk delete the whole key list
         commands.del(*keysToDelete.toTypedArray()).awaitSingle()
     }
+
+    suspend fun addToProcessingQueue(videoId: String): Unit = withContext(Dispatchers.IO) {
+        val commands = connection.async()
+        val ttlSeconds: Long = 3600
+
+        commands.setex("processing-queue:$videoId", ttlSeconds, "processing".toByteArray()).await()
+    }
+
+    suspend fun removeFromProcessingQueue(videoId: String): Unit = withContext(Dispatchers.IO) {
+        val commands = connection.async()
+
+        commands.del("processing-queue:$videoId").await()
+    }
+
+    suspend fun isInProcessingQueue(videoId: String): Boolean = withContext(Dispatchers.IO) {
+        val commands = connection.async()
+
+        val count = commands.exists("processing-queue:$videoId").await()
+
+        return@withContext count != null && count > 0
+    }
 }

@@ -66,7 +66,7 @@ class VideoController(
     }
 
     @Post("/upload", consumes = [MediaType.MULTIPART_FORM_DATA])
-    fun uploadVideo(@Part file: CompletedFileUpload, @Part name: String): HttpResponse<Any> {
+    suspend fun uploadVideo(@Part file: CompletedFileUpload, @Part name: String): HttpResponse<Any> {
         try {
             // https://www.ffmpeg.org/general.html#Supported-File-Formats_002c-Codecs-or-Features
             val allowedFileFormats = setOf("mp4", "m4v", "mov", "webm", "mkv", "avi", "flv", "wmv", "3gp")
@@ -93,6 +93,9 @@ class VideoController(
             // generate video id
             val videoObjectId = ObjectId()
             val videoId = videoObjectId.toHexString()
+
+            // add video to processing queue
+            cacheService.addToProcessingQueue(videoId)
 
             // start processing coroutine
             CoroutineScope(Dispatchers.IO).launch {
@@ -126,7 +129,13 @@ class VideoController(
                     }
 
                     logger.info("Video {} cached", videoId)
+
+                    // remove video from processing queue
+                    cacheService.removeFromProcessingQueue(videoId)
                 } catch (exception: Exception) {
+                    // remove video from processing queue
+                    cacheService.removeFromProcessingQueue(videoId)
+
                     logger.error("Failed to process video {}: {}", videoId, exception.message)
                 }
             }
@@ -158,6 +167,12 @@ class VideoController(
     @Get("/{id}/thumbnail")
     suspend fun getVideoThumbnail(id: String): HttpResponse<out Any> {
         try {
+            // check processing queue
+            if (cacheService.isInProcessingQueue(id)) {
+                return HttpResponse.status<Any>(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(ErrorResponse("Video is currently being processed, try again later"))
+            }
+
             // cache
             val thumbnailBytesCached = cacheService.getVideoThumbnail(id)
 
@@ -183,8 +198,14 @@ class VideoController(
     }
 
     @Get("/{id}")
-    fun getVideoMetadata(id: String): HttpResponse<Any> {
+    suspend fun getVideoMetadata(id: String): HttpResponse<Any> {
         try {
+            // check processing queue
+            if (cacheService.isInProcessingQueue(id)) {
+                return HttpResponse.status<Any>(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(ErrorResponse("Video is currently being processed, try again later"))
+            }
+
             val videoMetadata = databaseService.getVideoMetadata(id)
                 ?: return HttpResponse.notFound(ErrorResponse("Video does not exist or is currently being processed, try again later"))
 
@@ -199,6 +220,12 @@ class VideoController(
     @Get("/{id}/manifest.m3u8")
     suspend fun getVideoManifest(id: String): HttpResponse<out Any> {
         try {
+            // check processing queue
+            if (cacheService.isInProcessingQueue(id)) {
+                return HttpResponse.status<Any>(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(ErrorResponse("Video is currently being processed, try again later"))
+            }
+
             // cache
             val manifestContentCached = cacheService.getVideoManifest(id)
 
@@ -226,6 +253,12 @@ class VideoController(
     @Get("/{id}/{chunkName}.ts")
     suspend fun getVideoChunk(id: String, chunkName: String): HttpResponse<out Any> {
         try {
+            // check processing queue
+            if (cacheService.isInProcessingQueue(id)) {
+                return HttpResponse.status<Any>(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(ErrorResponse("Video is currently being processed, try again later"))
+            }
+
             val chunkFile = "$chunkName.ts"
 
             // cache
@@ -260,6 +293,12 @@ class VideoController(
     @Delete("/{id}")
     suspend fun deleteVideo(id: String): HttpResponse<out Any> {
         try {
+            // check processing queue
+            if (cacheService.isInProcessingQueue(id)) {
+                return HttpResponse.status<Any>(HttpStatus.CONFLICT)
+                    .body(ErrorResponse("Video is currently being processed, try again later"))
+            }
+
             // delete from database
             val videoDeletedFromDatabase = databaseService.deleteVideo(id)
 
@@ -293,6 +332,12 @@ class VideoController(
             val failedDeletionsList = coroutineScope {
                 videos.map { id ->
                     async {
+                        // skip videos currently being processed to avoid conflict
+                        if (cacheService.isInProcessingQueue(id)) {
+                            logger.warn("Failed to delete video {} because it is currently being processed", id)
+                            return@async id
+                        }
+
                         // delete from database
                         val videoDeletedFromDatabase = databaseService.deleteVideo(id)
 
