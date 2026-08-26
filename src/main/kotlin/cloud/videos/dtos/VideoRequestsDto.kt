@@ -11,6 +11,11 @@ data class UploadResponse(
 )
 
 @Serdeable
+data class VideoStatusResponse(
+    val isProcessing: Boolean,
+)
+
+@Serdeable
 data class ErrorResponse(
     val error: String,
 )

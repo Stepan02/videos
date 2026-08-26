@@ -31,6 +31,9 @@ GET http://localhost:8080/videos?search=<name>
 ### Get video metadata
 GET http://localhost:8080/videos/<id>
 
+### Get video status
+GET http://localhost:8080/videos/<id>/status
+
 ### Delete video
 DELETE http://localhost:8080/videos/<id>
 

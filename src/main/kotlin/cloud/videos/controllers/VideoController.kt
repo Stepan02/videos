@@ -3,6 +3,7 @@ package cloud.videos.controllers
 import cloud.videos.dtos.ErrorResponse
 import cloud.videos.dtos.UploadResponse
 import cloud.videos.dtos.VideoBulkDeleteResponse
+import cloud.videos.dtos.VideoStatusResponse
 import cloud.videos.exceptions.EmptyFileException
 import cloud.videos.exceptions.FileSizeExceededException
 import cloud.videos.exceptions.InvalidFileFormatException
@@ -194,6 +195,45 @@ class VideoController(
             logger.error(exception.message, exception)
 
             return HttpResponse.serverError(ErrorResponse("Failed to get video thumbnail"))
+        }
+    }
+
+    @Get("/{id}/status")
+    suspend fun getVideoStatus(id: String): HttpResponse<out Any> {
+        try {
+            // check processing queue
+            val isProcessing = cacheService.isInProcessingQueue(id)
+
+            // return true if video is still processing
+            if (isProcessing) {
+                return HttpResponse.ok(VideoStatusResponse(true))
+            }
+
+            // check video cache
+            val videoCached = cacheService.getVideoManifest(id)
+
+            // the video is not processing if it is in cache
+            if (videoCached != null) {
+                return HttpResponse.ok(VideoStatusResponse(false))
+            }
+
+            // check database in case of a cache miss
+            val videoExists =
+                databaseService.getVideoMetadata(id) // getVideoMetadata is better, because it uses mongodb index, getVideoManifest does not
+
+            // the video is not processing if it is in database already
+            if (videoExists != null) {
+                return HttpResponse.ok(VideoStatusResponse(false))
+            }
+
+            // if the video was not found in neither processing queue, cache nor database, it does not exist
+            return HttpResponse.notFound(ErrorResponse("Video not found"))
+        } catch (exception: CancellationException) {
+            throw exception;
+        } catch (exception: Exception) {
+            logger.error(exception.message, exception)
+
+            return HttpResponse.serverError(ErrorResponse("Failed to get video status"))
         }
     }
 
