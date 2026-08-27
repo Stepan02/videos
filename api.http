@@ -34,6 +34,9 @@ GET http://localhost:8080/videos/<id>
 ### Get video status
 GET http://localhost:8080/videos/<id>/status
 
+### Download video
+GET http://localhost:8080/videos/<id>/download
+
 ### Delete video
 DELETE http://localhost:8080/videos/<id>
 

@@ -13,19 +13,23 @@ import cloud.videos.services.DatabaseService
 import cloud.videos.services.VideoService
 import com.mongodb.client.MongoClient
 import com.mongodb.client.gridfs.GridFSBucket
+import com.mongodb.client.model.Filters.regex
 import io.micronaut.http.HttpHeaders
 import io.micronaut.http.HttpResponse
 import io.micronaut.http.HttpStatus
 import io.micronaut.http.MediaType
 import io.micronaut.http.annotation.*
 import io.micronaut.http.multipart.CompletedFileUpload
+import io.micronaut.http.server.types.files.StreamedFile
 import kotlinx.coroutines.*
 import org.bson.types.ObjectId
 import org.slf4j.LoggerFactory
+import java.io.SequenceInputStream
+import java.util.*
 
 @Controller("/videos")
 class VideoController(
-    gridFSBucket: GridFSBucket,
+    private val gridFSBucket: GridFSBucket,
     mongoClient: MongoClient,
     private val cacheService: CacheService,
     private val videoService: VideoService
@@ -185,7 +189,7 @@ class VideoController(
 
             // cache miss
             val thumbnailBytes = databaseService.getVideoThumbnail(id)
-                ?: return HttpResponse.notFound(ErrorResponse("Thumbnail does not exist or is currently being processed, try again later"))
+                ?: return HttpResponse.notFound(ErrorResponse("Thumbnail not found"))
 
             return HttpResponse.ok(thumbnailBytes)
                 .contentType(MediaType.IMAGE_JPEG)
@@ -229,7 +233,7 @@ class VideoController(
             // if the video was not found in neither processing queue, cache nor database, it does not exist
             return HttpResponse.notFound(ErrorResponse("Video not found"))
         } catch (exception: CancellationException) {
-            throw exception;
+            throw exception
         } catch (exception: Exception) {
             logger.error(exception.message, exception)
 
@@ -247,9 +251,11 @@ class VideoController(
             }
 
             val videoMetadata = databaseService.getVideoMetadata(id)
-                ?: return HttpResponse.notFound(ErrorResponse("Video does not exist or is currently being processed, try again later"))
+                ?: return HttpResponse.notFound(ErrorResponse("Video not found"))
 
             return HttpResponse.ok(videoMetadata)
+        }  catch (exception: CancellationException) {
+            throw exception
         } catch (exception: Exception) {
             logger.error(exception.message, exception)
 
@@ -277,7 +283,7 @@ class VideoController(
 
             // cache miss
             val manifestContent = databaseService.getVideoManifest(id)
-                ?: return HttpResponse.notFound(ErrorResponse("Video does not exist or is currently being processed, try again later"))
+                ?: return HttpResponse.notFound(ErrorResponse("Video not found"))
 
             return HttpResponse.ok(manifestContent)
                 .contentType(MediaType.of("application/x-mpegurl"))
@@ -313,7 +319,7 @@ class VideoController(
 
             // cache miss
             val chunkContent = databaseService.getVideoChunk(id, chunkFile)
-                ?: return HttpResponse.notFound(ErrorResponse("Chunk does not exist or is currently being processed, try again later"))
+                ?: return HttpResponse.notFound(ErrorResponse("Chunk not found"))
 
             // cache the chunk
             cacheService.saveVideoChunk(id, chunkFile, chunkContent)
@@ -327,6 +333,53 @@ class VideoController(
             logger.error(exception.message, exception)
 
             return HttpResponse.serverError(ErrorResponse("Failed to get video chunk"))
+        }
+    }
+
+    @Get("/{id}/download")
+    suspend fun downloadVideo(id: String): HttpResponse<out Any> {
+        try {
+            // check processing queue
+            if (cacheService.isInProcessingQueue(id)) {
+                return HttpResponse.status<Any>(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(ErrorResponse("Video is currently being processed, try again later"))
+            }
+
+            val video = databaseService.getVideoMetadata(id)
+                ?: return HttpResponse.notFound(ErrorResponse("Video not found"))
+
+            // get video chunks
+            val videoChunks = gridFSBucket.find(regex("filename", "^data/$id/chunk/"))
+                .toList()
+                .sortedBy { file ->
+                    file.filename.substringAfter("chunk/index")
+                        .substringBefore(".")
+                        .toIntOrNull() ?: 0
+                }
+
+            if (videoChunks.isEmpty()) {
+                return HttpResponse.notFound(ErrorResponse("Video chunks not found"))
+            }
+
+            // create input streams for each chunk
+            val inputStreams = videoChunks.map {
+                gridFSBucket.openDownloadStream(it.objectId)
+            }
+
+            // combine chunks
+            val combinedChunks = SequenceInputStream(Collections.enumeration(inputStreams))
+
+            // create streamed file
+            val streamedFile = StreamedFile(combinedChunks, MediaType.of("video/mp4"))
+                .attach("${video.name}.mp4")
+
+            return HttpResponse.ok(streamedFile)
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: Exception) {
+            logger.error(exception.message, exception)
+
+            return HttpResponse.serverError(ErrorResponse("Failed to download video"))
         }
     }
 
