@@ -65,3 +65,5 @@ System requirements: Java 25, Docker
 3. Start backend: 
    - Linux/macOS: `./gradlew run` 
    - Windows: `.\gradlew.bat run`
+
+**Dependencies**: this project uses FFmpeg via JavaCV, however, FFprobe which is used to obtain video file data (such as video duration), is part of FFmpeg, but is not included in the JavaCV library and has to be downloaded separately from [GitHub](https://github.com/GyanD/codexffmpeg/)

@@ -13,6 +13,9 @@ data class TranscodedVideoOutput(
     val playlist: ByteArray,
     val chunks: Map<String, ByteArray>,
     val thumbnail: ByteArray,
+    val duration: Double,
+    val width: Int,
+    val height: Int,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -34,6 +37,12 @@ data class TranscodedVideoOutput(
         return result
     }
 }
+
+data class VideoFileMetadata(
+    val duration: Double,
+    val width: Int,
+    val height: Int,
+)
 
 @Singleton
 class VideoService {
@@ -96,6 +105,8 @@ class VideoService {
                 throw IllegalStateException("Thumbnail processing failed")
             }
 
+            // get video file metadata
+            val videoFileMetadata: VideoFileMetadata = getVideMetadata(videoFile)
 
             // load the video files to ram
             val playlistBytes = playlistFile.readBytes()
@@ -109,7 +120,10 @@ class VideoService {
             return TranscodedVideoOutput(
                 playlist = playlistBytes,
                 chunks = chunksMap,
-                thumbnail = thumbnailBytes
+                thumbnail = thumbnailBytes,
+                duration = videoFileMetadata.duration,
+                width = videoFileMetadata.width,
+                height = videoFileMetadata.height,
             )
         } finally {
             // delete temporary files and directory
@@ -117,6 +131,31 @@ class VideoService {
             runCatching { ffmpegVideoLogs.delete() }
             runCatching { ffmpegThumbnailLogs.delete() }
             runCatching { outputDirectory.deleteRecursively() }
+        }
+    }
+
+    private fun getVideMetadata(videoFile: File): VideoFileMetadata {
+        try {
+            val process = ProcessBuilder(
+                "ffprobe",
+                "-v", "quiet",
+                "-print_format", "json",
+                "-show_format",
+                "-show_streams",
+                videoFile.absolutePath
+            ).start()
+
+            val jsonOutput = process.inputStream.bufferedReader().readText()
+            process.waitFor()
+
+            // get duration, width and height field values from the json output
+            val duration = "\"duration\":\\s*\"([^\"]+)\"".toRegex().find(jsonOutput)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+            val width = "\"width\":\\s*([0-9]+)".toRegex().find(jsonOutput)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+            val height = "\"height\":\\s*([0-9]+)".toRegex().find(jsonOutput)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+
+            return VideoFileMetadata(duration, width, height)
+        } catch (exception: Exception) {
+            throw exception
         }
     }
 }

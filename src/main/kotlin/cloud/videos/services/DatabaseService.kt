@@ -22,6 +22,9 @@ data class VideoMetadata(
     val name: String,
     val totalSize: Long,
     val uploadDate: String,
+    val duration: Double,
+    val width: Int,
+    val height: Int,
 )
 
 class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoClient: MongoClient) {
@@ -30,40 +33,44 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
         .getDatabase("videos")
         .getCollection("videos.files")
 
-    suspend fun saveVideo(videoId: ObjectId, data: TranscodedVideoOutput, name: String): String = withContext(Dispatchers.IO) {
-        val objectId = BsonObjectId(videoId)
-        val videoObjectId = videoId.toHexString()
+    suspend fun saveVideo(videoId: ObjectId, data: TranscodedVideoOutput, name: String): String =
+        withContext(Dispatchers.IO) {
+            val objectId = BsonObjectId(videoId)
+            val videoObjectId = videoId.toHexString()
 
-        // save manifest and file name
-        val manifestStream = ByteArrayInputStream(data.playlist)
+            // save manifest and file name
+            val manifestStream = ByteArrayInputStream(data.playlist)
 
-        // calculate video size
-        val videoSize = data.playlist.size.toLong() +
-            data.thumbnail.size.toLong() +
-            data.chunks.values.sumOf { it.size.toLong() }
+            // calculate video size
+            val videoSize = data.playlist.size.toLong() +
+                data.thumbnail.size.toLong() +
+                data.chunks.values.sumOf { it.size.toLong() }
 
-        // add video name and size to the object
-        val videoMetadata = Document().apply {
-            append("name", name)
-            append("totalSize", videoSize)
+            // add video name, size, duration, width and height to the object
+            val videoMetadata = Document().apply {
+                append("name", name)
+                append("totalSize", videoSize)
+                append("duration", data.duration)
+                append("width", data.width)
+                append("height", data.height)
+            }
+            val options = GridFSUploadOptions().metadata(videoMetadata)
+
+            gridFSBucket.uploadFromStream(objectId, "manifest.m3u8", manifestStream, options)
+
+            // save thumbnail
+            val thumbnailStream = ByteArrayInputStream(data.thumbnail)
+            gridFSBucket.uploadFromStream("data/$videoObjectId/thumbnail.jpg", thumbnailStream)
+
+            // save video chunks
+            data.chunks.forEach { (chunkName, bytes) ->
+                val chunkStream = ByteArrayInputStream(bytes)
+
+                gridFSBucket.uploadFromStream("data/$videoObjectId/chunk/$chunkName", chunkStream)
+            }
+
+            return@withContext videoObjectId
         }
-        val options = GridFSUploadOptions().metadata(videoMetadata)
-
-        gridFSBucket.uploadFromStream(objectId, "manifest.m3u8", manifestStream, options)
-
-        // save thumbnail
-        val thumbnailStream = ByteArrayInputStream(data.thumbnail)
-        gridFSBucket.uploadFromStream("data/$videoObjectId/thumbnail.jpg", thumbnailStream)
-
-        // save video chunks
-        data.chunks.forEach { (chunkName, bytes) ->
-            val chunkStream = ByteArrayInputStream(bytes)
-
-            gridFSBucket.uploadFromStream("data/$videoObjectId/chunk/$chunkName", chunkStream)
-        }
-
-        return@withContext videoObjectId
-    }
 
     suspend fun getVideosMetadataList(limit: Int = 10, lastVideoId: String?): List<VideoMetadata> = withContext(Dispatchers.IO) {
         if (lastVideoId != null && !ObjectId.isValid(lastVideoId)) return@withContext emptyList()
@@ -92,7 +99,13 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
                         ?.getString("name") ?: "unknown",
                     totalSize = videoDocument.get("metadata", Document::class.java)
                         ?.getLong("totalSize") ?: 0L,
-                    uploadDate = videoDocument.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown"
+                    uploadDate = videoDocument.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown",
+                    duration = videoDocument.get("metadata", Document::class.java)
+                        .getDouble("duration"),
+                    width = videoDocument.get("metadata", Document::class.java)
+                        .getInteger("width"),
+                    height = videoDocument.get("metadata", Document::class.java)
+                        .getInteger("height"),
                 )
             }
     }
@@ -111,7 +124,13 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
                 ?.getString("name") ?: "unknown",
             totalSize = videoMetadata.get("metadata", Document::class.java)
                 ?.getLong("totalSize") ?: 0L,
-            uploadDate = videoMetadata.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown"
+            uploadDate = videoMetadata.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown",
+            duration = videoMetadata.get("metadata", Document::class.java)
+                .getDouble("duration"),
+            width = videoMetadata.get("metadata", Document::class.java)
+                .getInteger("width"),
+            height = videoMetadata.get("metadata", Document::class.java)
+                .getInteger("height"),
         )
     }
 
@@ -152,7 +171,8 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
         val lastVideoFilter = if (lastVideoId != null) {
             and(
                 fileFilter,
-                lt("_id", ObjectId(lastVideoId)))
+                lt("_id", ObjectId(lastVideoId))
+            )
         } else {
             // filter is blank if no lastVideoId is provided - return newest ones
             fileFilter
@@ -171,7 +191,13 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
                         ?.getString("name") ?: "unknown",
                     totalSize = videoDocument.get("metadata", Document::class.java)
                         ?.getLong("totalSize") ?: 0L,
-                    uploadDate = videoDocument.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown"
+                    uploadDate = videoDocument.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown",
+                    duration = videoDocument.get("metadata", Document::class.java)
+                        .getDouble("duration"),
+                    width = videoDocument.get("metadata", Document::class.java)
+                        .getInteger("width"),
+                    height = videoDocument.get("metadata", Document::class.java)
+                        .getInteger("height"),
                 )
             }
     }

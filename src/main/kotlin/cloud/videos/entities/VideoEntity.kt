@@ -9,5 +9,8 @@ data class VideoEntity(
     val id: String? = null,
     val title: String,
     val fileId: String,
-    val size: Long
+    val size: Long,
+    val duration: Double,
+    val width: Int,
+    val height: Int,
 )
