@@ -1,9 +1,6 @@
 package cloud.videos.controllers
 
-import cloud.videos.dtos.ErrorResponse
-import cloud.videos.dtos.UploadResponse
-import cloud.videos.dtos.VideoBulkDeleteResponse
-import cloud.videos.dtos.VideoStatusResponse
+import cloud.videos.dtos.*
 import cloud.videos.exceptions.EmptyFileException
 import cloud.videos.exceptions.FileSizeExceededException
 import cloud.videos.exceptions.InvalidFileFormatException
@@ -52,6 +49,10 @@ class VideoController(
                 return HttpResponse.badRequest(ErrorResponse("Limit must be greater than 0"))
             }
 
+            // get total video count
+            val totalCount = databaseService.getVideosCount()
+
+            // get videos list
             val videosList = if (!search.isNullOrBlank()) {
                 // search for the video if the search parameter is present
                 databaseService.searchVideoByName(search, recordsLimit, lastVideoId)
@@ -60,7 +61,12 @@ class VideoController(
                 databaseService.getVideosMetadataList(recordsLimit, lastVideoId)
             }
 
-            return HttpResponse.ok(videosList)
+            return HttpResponse.ok(VideoMetadataList(
+                totalCount = totalCount,
+                videos = videosList,
+                limit = recordsLimit,
+                lastVideoId = lastVideoId
+            ))
         } catch (exception: CancellationException) {
             throw exception
         } catch (exception: Exception) {

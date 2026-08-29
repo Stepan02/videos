@@ -45,6 +45,25 @@ data class VideoResponse(
 }
 
 @Serdeable
+data class VideoMetadata(
+    val id: String,
+    val name: String,
+    val totalSize: Long,
+    val uploadDate: String,
+    val duration: Double,
+    val width: Int,
+    val height: Int,
+)
+
+@Serdeable
+data class VideoMetadataList(
+    val totalCount: Long,
+    val limit: Int,
+    val lastVideoId: String?,
+    val videos: List<VideoMetadata>,
+)
+
+@Serdeable
 data class VideoBulkDeleteResponse(
     val deletedCount: Int,
     val failedCount: Int,

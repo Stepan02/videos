@@ -1,13 +1,12 @@
 package cloud.videos.services
 
+import cloud.videos.dtos.VideoMetadata
 import com.mongodb.client.MongoClient
 import com.mongodb.client.MongoCollection
 import com.mongodb.client.gridfs.GridFSBucket
 import com.mongodb.client.gridfs.model.GridFSUploadOptions
-import com.mongodb.client.model.Filters
 import com.mongodb.client.model.Filters.*
 import com.mongodb.client.model.Sorts.descending
-import io.micronaut.serde.annotation.Serdeable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.bson.BsonObjectId
@@ -15,17 +14,6 @@ import org.bson.Document
 import org.bson.types.ObjectId
 import java.io.ByteArrayInputStream
 import java.util.regex.Pattern
-
-@Serdeable
-data class VideoMetadata(
-    val id: String,
-    val name: String,
-    val totalSize: Long,
-    val uploadDate: String,
-    val duration: Double,
-    val width: Int,
-    val height: Int,
-)
 
 class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoClient: MongoClient) {
 
@@ -71,6 +59,10 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
 
             return@withContext videoObjectId
         }
+
+    fun getVideosCount(): Long {
+        return connectDatabase().countDocuments(eq("filename", "manifest.m3u8"))
+    }
 
     suspend fun getVideosMetadataList(limit: Int = 10, lastVideoId: String?): List<VideoMetadata> = withContext(Dispatchers.IO) {
         if (lastVideoId != null && !ObjectId.isValid(lastVideoId)) return@withContext emptyList()
@@ -212,7 +204,7 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
         gridFSBucket.find(eq("_id", objectId)).first() ?: return@withContext true
 
         // delete thumbnail and video chunks
-        val videoFiles = gridFSBucket.find(Filters.regex("filename", "^data/$id/")).toList()
+        val videoFiles = gridFSBucket.find(regex("filename", "^data/$id/")).toList()
 
         videoFiles.forEach { file ->
             gridFSBucket.delete(file.objectId)
