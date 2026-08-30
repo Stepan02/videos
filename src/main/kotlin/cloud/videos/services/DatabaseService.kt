@@ -21,6 +21,20 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
         .getDatabase("videos")
         .getCollection("videos.files")
 
+    fun Document.resolveVideoMetadata(): VideoMetadata {
+        val metadata = get("metadata", Document::class.java)
+
+        return VideoMetadata(
+            id = getObjectId("_id").toHexString(),
+            name = metadata?.getString("name") ?: "unknown",
+            totalSize = metadata?.getLong("totalSize") ?: 0L,
+            uploadDate = getDate("uploadDate")?.toInstant()?.toString() ?: "unknown",
+            duration = metadata?.getDouble("duration") ?: 0.0,
+            width = metadata?.getInteger("width") ?: 0,
+            height = metadata?.getInteger("height") ?: 0,
+        )
+    }
+
     suspend fun saveVideo(videoId: ObjectId, data: TranscodedVideoOutput, name: String): String =
         withContext(Dispatchers.IO) {
             val objectId = BsonObjectId(videoId)
@@ -84,46 +98,18 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
             .limit(limit)
             .toList()
             .filterNotNull()
-            .map { videoDocument ->
-                VideoMetadata(
-                    id = videoDocument.getObjectId("_id").toHexString(),
-                    name = videoDocument.get("metadata", Document::class.java)
-                        ?.getString("name") ?: "unknown",
-                    totalSize = videoDocument.get("metadata", Document::class.java)
-                        ?.getLong("totalSize") ?: 0L,
-                    uploadDate = videoDocument.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown",
-                    duration = videoDocument.get("metadata", Document::class.java)
-                        .getDouble("duration"),
-                    width = videoDocument.get("metadata", Document::class.java)
-                        .getInteger("width"),
-                    height = videoDocument.get("metadata", Document::class.java)
-                        .getInteger("height"),
-                )
-            }
+            .map { it.resolveVideoMetadata() }
     }
 
     fun getVideoMetadata(id: String): VideoMetadata? {
         if (!ObjectId.isValid(id)) return null
 
         val objectId = ObjectId(id)
-        val videoMetadata = connectDatabase()
-            .find(eq("_id", objectId))
-            .firstOrNull() ?: return null
 
-        return VideoMetadata(
-            id = id,
-            name = videoMetadata.get("metadata", Document::class.java)
-                ?.getString("name") ?: "unknown",
-            totalSize = videoMetadata.get("metadata", Document::class.java)
-                ?.getLong("totalSize") ?: 0L,
-            uploadDate = videoMetadata.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown",
-            duration = videoMetadata.get("metadata", Document::class.java)
-                .getDouble("duration"),
-            width = videoMetadata.get("metadata", Document::class.java)
-                .getInteger("width"),
-            height = videoMetadata.get("metadata", Document::class.java)
-                .getInteger("height"),
-        )
+        return connectDatabase()
+            .find(eq("_id", objectId))
+            .firstOrNull()
+            ?.resolveVideoMetadata()
     }
 
     suspend fun getVideoManifest(id: String): ByteArray? = withContext(Dispatchers.IO) {
@@ -176,22 +162,7 @@ class DatabaseService(private val gridFSBucket: GridFSBucket, private val mongoC
             .limit(limit)
             .toList()
             .filterNotNull()
-            .map { videoDocument ->
-                VideoMetadata(
-                    id = videoDocument.getObjectId("_id").toHexString(),
-                    name = videoDocument.get("metadata", Document::class.java)
-                        ?.getString("name") ?: "unknown",
-                    totalSize = videoDocument.get("metadata", Document::class.java)
-                        ?.getLong("totalSize") ?: 0L,
-                    uploadDate = videoDocument.getDate("uploadDate")?.toInstant()?.toString() ?: "unknown",
-                    duration = videoDocument.get("metadata", Document::class.java)
-                        .getDouble("duration"),
-                    width = videoDocument.get("metadata", Document::class.java)
-                        .getInteger("width"),
-                    height = videoDocument.get("metadata", Document::class.java)
-                        .getInteger("height"),
-                )
-            }
+            .map { it.resolveVideoMetadata() }
     }
 
     suspend fun deleteVideo(id: String): Boolean = withContext(Dispatchers.IO) {
