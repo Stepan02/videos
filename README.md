@@ -61,9 +61,12 @@ Under normal circumstances, the `src` attribute would include a link to a media 
 System requirements: Java 25, Docker
 
 1. Clone this repository
-2. Start database and cache: `docker compose up -d`
-3. Start backend: 
+2. Create `.env` file in the root directory with correct MongoDB and Redis credentials (refer to `.env.example`)
+3. Start database and cache: `docker compose up -d`
+4. Start backend: 
    - Linux/macOS: `./gradlew run` 
    - Windows: `.\gradlew.bat run`
 
-**Dependencies**: this project uses FFmpeg via JavaCV, however, FFprobe which is used to obtain video file data (such as video duration), is part of FFmpeg, but is not included in the JavaCV library and has to be downloaded separately from [GitHub](https://github.com/GyanD/codexffmpeg/)
+Micronaut server will start on `localhost:8080`, you can see all available API endpoints in the `api.http` file.
+
+**Dependencies**: this project uses FFmpeg via JavaCV, however, FFprobe which is used to obtain video file data (such as video duration), is part of FFmpeg, but is not included in the JavaCV library and has to be downloaded separately from [GitHub](https://github.com/GyanD/codexffmpeg/releases)
